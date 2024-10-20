@@ -1,6 +1,17 @@
 <script>
     import { onMount } from "svelte";
 
+
+    let lineRef;
+    let computedStyle;
+    let fontSize;
+    let fontFamily;
+    let letterSpacingStr;
+    let letterSpacing;
+    let paddingLeft;
+    let paddingRight;
+    let containerWidth;
+
     let charWidths = {};
     let spaceWidth = 0;
     let alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-';
@@ -10,11 +21,145 @@
         line2: []
     }
 
+    let inputRef;
+
+    let timer = 60;
+    let interval;
+    let WPM = 0;
+
+
     let words = [];
 
-    let char = '';
+    let typedWordsLine = [];
+    let typedWordsRecord = [];
 
-    
+    let char = '';
+    let hasStartedTyping = false;
+
+    let currentWord = ''
+    let wordIndex = 0
+    let lastKeyPressed = ''
+    let currentWordInput = ''
+    let isMatchingWord = false;
+
+    let correctWordCounter = 0;
+
+    function handleInput(event) {
+        // Set the word input
+        console.log('wordIndex:', wordIndex);
+        currentWord = lines.line1[wordIndex];
+
+        if (!hasStartedTyping) {
+            hasStartedTyping = true;
+            console.log('User has started typing');
+            // Start timer
+            startTimer();
+        }
+
+        if(timer > 0) {
+            console.log('LastKeyPressed: ',lastKeyPressed);
+            currentWordInput = inputRef.value;
+
+            console.log('Current Word: ',currentWord);
+            console.log('Current Input: ',currentWordInput);
+
+            // Check if key pressed was space
+            if(lastKeyPressed === ' ') {
+                console.log('Space bar was pressed');
+
+                // Check if user spelt word correctly
+                isMatchingWord = currentWord === currentWordInput.trim();
+                if(isMatchingWord) {
+                    console.log('Word Matches: ', isMatchingWord);
+                    console.log('User spelt word correctly');
+                    correctWordCounter++;
+                } else {
+                    console.log('User spelt word incorrectly');
+                }
+
+                // Store results of typed words for current line
+                typedWordsLine.push({
+                    word: currentWord,
+                    userSpelling: currentWordInput.trim(),
+                    isCorrect: isMatchingWord
+                });
+
+                // store record of typed word
+                typedWordsRecord.push({
+                    word: currentWord,
+                    userSpelling: currentWordInput.trim(),
+                    isCorrect: isMatchingWord
+                });
+
+                calculateWPM();
+                inputRef.value = ''; // Reset input field
+                wordIndex++; // Increment word index
+
+                // Check if index is out of bounds (end of line)
+                if(wordIndex >= lines.line1.length) {
+                    wordIndex = 0; // Reset index
+
+                    typedWordsLine = []; // Clear array for new line
+
+                    // Update to next line
+                    updateLines();
+                }
+
+                console.log('Correct Word Count: ', correctWordCounter);
+                console.log('Typed Words (Current Line): ', typedWordsLine);
+                console.log('Typed Words (Total): ', typedWordsRecord);
+
+                console.log('Lines: ', lines);
+                
+
+                updateSpanStyles();
+            }
+        } else {
+            inputRef.value = '';
+        }
+    }
+
+    function startTimer() {
+        interval = setInterval(() => {
+            timer--;
+            if (timer <= 0) {
+                clearInterval(interval);
+                console.log('Time is up!');
+                // Handle end of typing test
+            }
+        }, 1000);
+    }
+
+    function calculateWPM() {
+        let timeInSeconds = 60 - timer
+        let timeInMinutes = timeInSeconds / 60;
+        WPM = correctWordCounter / timeInMinutes;
+    }
+
+    function updateLines() {
+        lines = {
+            line1: lines.line2,
+            line2: getRandomWords([...words], containerWidth, paddingLeft, paddingRight)
+        }
+    }
+
+    function updateSpanStyles() {
+        console.log('Updating Spans on Line 1')
+        const spans = document.querySelectorAll('#words-line-one span');
+        spans.forEach((span, index) => {
+            if (index === wordIndex) {
+                span.style.backgroundColor = 'lightgrey';
+            } else {
+                span.style.backgroundColor = '';
+            }
+        });
+    }
+
+    function setInitalSpanStyles(line, index) {
+    return line === 1 && index === wordIndex 
+        ? `background-color: lightgrey; margin-right: ${spaceWidth / 2}px; margin-left: ${spaceWidth / 2}px;`
+        : `background-color: white; margin-right: ${spaceWidth / 2}px; margin-left: ${spaceWidth / 2}px;`;
+    }   
 
     function calculateTextWidth(text) {
         return text.split('').reduce((total, char) => total + (charWidths[char] || 0), 0);
@@ -53,14 +198,11 @@
             document.body.removeChild(span);
             return textWidth;
         }
-
         // Measure "a a" (with a space) and "aa" (without a space)
         const widthWithSpace = measureTextWidth('a a');
         const widthWithoutSpace = measureTextWidth('aa');
-
         // The space width is the difference between the two measurements
         const spaceWidth = widthWithSpace - widthWithoutSpace;
-
         return spaceWidth;
     }
 
@@ -68,7 +210,7 @@
         let currentLine = '';
         let currentLineWidth = 0;
         let selectedWords = [];
-        const availableWidth = containerWidth - paddingLeft - paddingRight - 50;
+        const availableWidth = containerWidth - paddingLeft - paddingRight - 10;
 
         while (words.length > 0) {
             const randomIndex = Math.floor(Math.random() * words.length);
@@ -101,27 +243,35 @@
     }
 
 
+
     onMount(async () => {
         try {
             words = await fetchWords();
 
-            const line = document.querySelector('.word-line');
-            const computedStyle = window.getComputedStyle(line);
-            const fontSize = parseFloat(computedStyle.fontSize);
-            const fontFamily = computedStyle.fontFamily;
-            const letterSpacingStr = computedStyle.letterSpacing;
-            const letterSpacing = letterSpacingStr === 'normal' ? 0 : parseFloat(letterSpacingStr);
-            const paddingLeft = parseFloat(computedStyle.paddingLeft);
-            const paddingRight = parseFloat(computedStyle.paddingRight);
+            lineRef = document.querySelector('.word-line');
+            computedStyle = window.getComputedStyle(lineRef);
+            fontSize = parseFloat(computedStyle.fontSize);
+            fontFamily = computedStyle.fontFamily;
+            letterSpacingStr = computedStyle.letterSpacing;
+            letterSpacing = letterSpacingStr === 'normal' ? 0 : parseFloat(letterSpacingStr);
+            paddingLeft = parseFloat(computedStyle.paddingLeft);
+            paddingRight = parseFloat(computedStyle.paddingRight);
 
             measureCharWidths(fontSize, fontFamily, letterSpacing);
             spaceWidth = getSpaceWidth(fontSize, fontFamily, letterSpacing);
 
-            const containerWidth = line.clientWidth;
+            containerWidth = lineRef.clientWidth;
             // Fill line1
             lines.line1 = getRandomWords([...words], containerWidth, paddingLeft, paddingRight);
             // Fill line2
             lines.line2 = getRandomWords([...words], containerWidth, paddingLeft, paddingRight);
+
+            const inputField = document.getElementById('text-input');
+            inputField.addEventListener('keydown', (event) => {
+                lastKeyPressed = event.key;
+            });
+
+            updateSpanStyles();
 
             console.log('Lines:', lines.line1, lines.line2);
             console.log(charWidths);
@@ -135,10 +285,20 @@
 
 <div id="test-ui">
     <div id="words">
-        <div id="words-line-one" class="word-line">{lines.line1.join(' ')}</div>
-        <div id="words-line-two" class="word-line">{lines.line2.join(' ')}</div>
+        <div id="words-line-one" class="word-line">
+            {#each lines.line1 as word, index}
+                <span style={setInitalSpanStyles(1, index)}>{word}</span>
+            {/each}
+        </div>
+        <div id="words-line-two" class="word-line">
+            {#each lines.line2 as word, index}
+                <span style={setInitalSpanStyles(2, index)}>{word}</span>
+            {/each}
+        </div>
     </div>
-    <input type="text" id="text-input"> 
+    <input type="text" id="text-input"  bind:this={inputRef} on:input={handleInput}> 
+    <div id="timer-display">Time left: {timer} seconds</div>
+    <div>WPM: {WPM}</div>
 </div>
 
 
@@ -163,8 +323,10 @@
         flex-direction: row;
         align-items: center;
         padding: 0px 10px 0px 10px;
+    }
 
-
+    .word-line span {
+        margin-right: 8px;
     }
 
     #text-input {
